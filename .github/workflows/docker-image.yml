@@ -10,6 +10,7 @@ on:
         type: string
   push:
     branches: [main, master]
+    tags: ['v*', 'latest']
   pull_request:
     branches: [main, master]
 
@@ -64,6 +65,17 @@ jobs:
           echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Detected version: v${VERSION}"
 
+      - name: Extract git tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v4
@@ -71,6 +83,7 @@ jobs:
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.owner }}/decotv
           tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }},enable=${{ steps.tag.outputs.is_tag }}
             type=raw,value=${{ github.event.inputs.tag || 'latest' }},enable={{is_default_branch}}
             type=raw,value=${{ steps.version.outputs.version }},enable={{is_default_branch}}
 
@@ -83,8 +96,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
-            ghcr.io/${{ steps.lowercase.outputs.owner }}/decotv:${{ github.event.inputs.tag || 'latest' }}
-            ghcr.io/${{ steps.lowercase.outputs.owner }}/decotv:${{ steps.version.outputs.version }}
+            ${{ steps.tag.outputs.is_tag == 'true' && format('ghcr.io/{0}/decotv:{1}', steps.lowercase.outputs.owner, steps.tag.outputs.tag) || '' }}
+            ${{ github.ref_type == 'branch' && format('ghcr.io/{0}/decotv:{1}', steps.lowercase.outputs.owner, github.event.inputs.tag || 'latest') || '' }}
+            ${{ github.ref_type == 'branch' && format('ghcr.io/{0}/decotv:{1}', steps.lowercase.outputs.owner, steps.version.outputs.version) || '' }}
           outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/decotv,name-canonical=true,push=true
 
       - name: Export digest
